@@ -3,6 +3,9 @@ venv/
 .env/
 .envrc
 
+# Игнорировать файлы с переменными окружения
+.env
+
 # Игнорировать файлы/папки, создаваемые IDE
 .idea/
 .vscode/
@@ -31,11 +34,16 @@ dist/
 *.csv
 word_analysis_results.xlsx
 
-# Игнорировать кэш переводов (может содержать личные данные)
-translation_cache.json
+# Игнорировать папки с данными
+data/downloads/
+data/results/
 
-# Игнорировать файлы с промптами
-prompts.md
+
+
+# Игнорировать устаревшие файлы
+known_words.txt
+
+
 
 # Игнорировать тестовые файлы
 .pytest_cache/

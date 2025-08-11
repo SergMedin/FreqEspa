@@ -23,11 +23,62 @@ class WordAnalyzer:
         self.word_frequencies = Counter()
         self.word_categories = defaultdict(list)
         self.known_words = set()
-        self.translation_cache = {}
+    
+    def load_known_words_from_anki(self, anki_integration, deck_pattern: str = "Spanish*", field_names: List[str] = None) -> bool:
+        """
+        Загружает известные слова из колод Anki
+        
+        Args:
+            anki_integration: Экземпляр AnkiIntegration
+            deck_pattern: Паттерн для поиска колод (по умолчанию "Spanish*")
+            field_names: Список названий полей для извлечения слов
+            
+        Returns:
+            True если загрузка успешна, False в противном случае
+        """
+        if not field_names:
+            field_names = ['FrontText', 'BackText']
+        
+        try:
+            if not anki_integration.is_connected():
+                print("Не подключены к Anki для загрузки известных слов")
+                return False
+            
+            # Находим заметки в испанских колодах
+            note_ids = anki_integration.find_notes_by_deck(deck_pattern)
+            if not note_ids:
+                print(f"Не найдено заметок в колодах по паттерну: {deck_pattern}")
+                return False
+            
+            print(f"Найдено {len(note_ids)} заметок в испанских колодах")
+            
+            # Извлекаем текст из заметок
+            notes_data = anki_integration.extract_text_from_notes(note_ids, field_names)
+            
+            # Собираем все слова из текста
+            all_words = set()
+            for note_data in notes_data:
+                for text in note_data['texts']:
+                    if text:
+                        # Очищаем текст от HTML и извлекаем слова
+                        from .text_processor import SpanishTextProcessor
+                        processor = SpanishTextProcessor()
+                        cleaned_text = processor.clean_text(text, remove_prefixes=False)
+                        words = processor.extract_spanish_words(cleaned_text)
+                        all_words.update(words)
+            
+            # Устанавливаем известные слова
+            self.known_words = all_words
+            print(f"Загружено {len(self.known_words)} известных слов из Anki")
+            return True
+            
+        except Exception as e:
+            print(f"Ошибка при загрузке известных слов из Anki: {e}")
+            return False
     
     def load_known_words(self, file_path: str) -> bool:
         """
-        Загружает список известных слов из файла
+        Загружает список известных слов из файла (устаревший метод)
         
         Args:
             file_path: Путь к файлу с известными словами
@@ -35,34 +86,18 @@ class WordAnalyzer:
         Returns:
             True если загрузка успешна, False в противном случае
         """
+        print("ВНИМАНИЕ: Метод load_known_words() устарел. Используйте load_known_words_from_anki()")
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 words = [line.strip().lower() for line in f if line.strip()]
                 self.known_words = set(words)
-            print(f"Загружено {len(self.known_words)} известных слов")
+            print(f"Загружено {len(self.known_words)} известных слов из файла")
             return True
         except Exception as e:
             print(f"Ошибка при загрузке известных слов: {e}")
             return False
     
-    def load_translation_cache(self, file_path: str) -> bool:
-        """
-        Загружает кэш переводов из JSON файла
-        
-        Args:
-            file_path: Путь к JSON файлу с кэшем переводов
-            
-        Returns:
-            True если загрузка успешна, False в противном случае
-        """
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                self.translation_cache = json.load(f)
-            print(f"Загружен кэш переводов: {len(self.translation_cache)} записей")
-            return True
-        except Exception as e:
-            print(f"Ошибка при загрузке кэша переводов: {e}")
-            return False
+
     
     def add_words_from_text(self, text: str, weight: int = 1):
         """
@@ -168,13 +203,11 @@ class WordAnalyzer:
             data = []
             for word, freq in self.word_frequencies.most_common():
                 is_known = word in self.known_words
-                translation = self.translation_cache.get(word, '')
                 
                 row = {
                     'Слово': word,
                     'Частота': freq,
-                    'Известно': 'Да' if is_known else 'Нет',
-                    'Перевод': translation
+                    'Известно': 'Да' if is_known else 'Нет'
                 }
                 data.append(row)
             
@@ -193,14 +226,12 @@ class WordAnalyzer:
                         for word in words:
                             freq = self.word_frequencies[word]
                             is_known = word in self.known_words
-                            translation = self.translation_cache.get(word, '')
                             
                             category_data.append({
                                 'Категория': category.replace('_', ' ').title(),
                                 'Слово': word,
                                 'Частота': freq,
-                                'Известно': 'Да' if is_known else 'Нет',
-                                'Перевод': translation
+                                'Известно': 'Да' if is_known else 'Нет'
                             })
                     
                     category_df = pd.DataFrame(category_data)

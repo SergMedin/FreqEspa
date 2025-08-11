@@ -20,8 +20,19 @@ spanish_analyser/
 │   │   ├── anki_integration.py    # Интеграция с Anki
 │   │   └── word_analyzer.py       # Анализ слов
 │   └── main.py                    # Основной скрипт
+├── tools/                         # Основные инструменты
+│   ├── web_scraper/               # Инструмент 1: Универсальный веб-скрапинг
+│   │   ├── html_downloader.py           # Базовый загрузчик HTML
+│   │   ├── scraping_manager.py          # Менеджер скрапинга
+│   │   └── driving_tests_downloader.py # Специализация для билетов
+│   ├── text_analyzer/             # Инструмент 2: Текстовый анализатор
+│   │   └── driving_tests_analyzer.py
+│   ├── main_tools.py              # Главный скрипт управления
+│   └── README.md                  # Документация инструментов
+├── data/                          # Данные проекта
+│   ├── downloads/                 # Загруженные HTML файлы
+│   └── results/                   # Результаты анализа (Excel)
 ├── tests/                         # Тесты
-├── data/                          # Данные для анализа
 ├── requirements.txt               # Зависимости Python
 ├── setup.py                      # Установка модуля
 └── README.md                     # Документация
@@ -82,6 +93,12 @@ analyzer = WordAnalyzer()
 analyzer.add_words_from_text("hola mundo, ¿cómo estás?")
 stats = analyzer.get_summary_stats()
 print(f"Всего слов: {stats['всего_уникальных_слов']}")
+
+# Загрузка известных слов из Anki
+from spanish_analyser import AnkiIntegration
+with AnkiIntegration() as anki:
+    if anki.is_connected():
+        analyzer.load_known_words_from_anki(anki)
 ```
 
 ### Интеграция с Anki
@@ -99,6 +116,22 @@ with AnkiIntegration() as anki:
 
 ```bash
 python src/main.py
+```
+
+### Использование инструментов
+
+```bash
+# Показать статус инструментов
+python tools/main_tools.py status
+
+# Загрузить билеты (страницы 1-10)
+python tools/main_tools.py download --start 1 --end 10
+
+# Анализировать загруженные билеты
+python tools/main_tools.py analyze
+
+# Полный цикл: загрузка + анализ
+python tools/main_tools.py full --start 1 --end 5
 ```
 
 ## Тестирование

@@ -86,15 +86,15 @@ class TestWordAnalyzer(unittest.TestCase):
         self.assertEqual(top_words[0][0], "primero")  # Самое частое
         self.assertEqual(top_words[0][1], 3)
     
-    def test_load_known_words(self):
-        """Тест загрузки известных слов"""
+    def test_load_known_words_from_file(self):
+        """Тест загрузки известных слов из файла (устаревший метод)"""
         # Создаём временный файл
         with tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8') as f:
             f.write("hola\nmundo\ncasa\n")
             temp_file = f.name
         
         try:
-            # Загружаем слова
+            # Загружаем слова (устаревший метод)
             result = self.analyzer.load_known_words(temp_file)
             self.assertTrue(result)
             self.assertEqual(len(self.analyzer.known_words), 3)
@@ -105,22 +105,28 @@ class TestWordAnalyzer(unittest.TestCase):
             # Удаляем временный файл
             os.unlink(temp_file)
     
-    def test_load_translation_cache(self):
-        """Тест загрузки кэша переводов"""
-        # Создаём временный JSON файл
-        cache_data = {"hola": "привет", "mundo": "мир"}
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8') as f:
-            json.dump(cache_data, f, ensure_ascii=False)
-            temp_file = f.name
+    def test_load_known_words_from_anki(self):
+        """Тест загрузки известных слов из Anki"""
+        # Создаём мок для AnkiIntegration
+        from unittest.mock import Mock
         
-        try:
-            # Загружаем кэш
-            result = self.analyzer.load_translation_cache(temp_file)
-            self.assertTrue(result)
-            self.assertEqual(self.analyzer.translation_cache, cache_data)
-        finally:
-            # Удаляем временный файл
-            os.unlink(temp_file)
+        mock_anki = Mock()
+        mock_anki.is_connected.return_value = True
+        mock_anki.find_notes_by_deck.return_value = [1, 2, 3]
+        mock_anki.extract_text_from_notes.return_value = [
+            {
+                'texts': ['hola mundo', 'casa bonita'],
+                'note_type': 'Basic',
+                'tags': ['spanish']
+            }
+        ]
+        
+        # Загружаем слова из Anki
+        result = self.analyzer.load_known_words_from_anki(mock_anki)
+        self.assertTrue(result)
+        self.assertGreater(len(self.analyzer.known_words), 0)
+    
+
     
     def test_get_summary_stats(self):
         """Тест получения сводной статистики"""

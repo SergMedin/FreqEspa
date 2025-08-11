@@ -88,8 +88,14 @@ class SpanishTextProcessor:
         """
         if not text:
             return ""
-        soup = BeautifulSoup(text, "html.parser")
-        return soup.get_text()
+        
+        # Проверяем, содержит ли текст HTML теги
+        if '<' in text and '>' in text:
+            soup = BeautifulSoup(text, "html.parser")
+            return soup.get_text()
+        else:
+            # Если текст не содержит HTML, возвращаем как есть
+            return text
     
     def clean_text(self, text: str, remove_prefixes: bool = True) -> str:
         """

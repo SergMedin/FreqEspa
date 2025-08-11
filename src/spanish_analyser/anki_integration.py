@@ -164,17 +164,23 @@ class AnkiIntegration:
             if not note_info:
                 continue
             
-            # Определяем индексы нужных полей
+            # Получаем информацию о типах полей
+            note_type_info = note_info['note_type']
+            field_definitions = note_type_info.get('flds', [])
+            
+            # Определяем индексы нужных полей по их названиям
             field_indexes = []
-            for i, field_name in enumerate(note_info['fields']):
-                if field_name in field_names:
-                    field_indexes.append(i)
+            for field_def in field_definitions:
+                if field_def.get('name') in field_names:
+                    field_indexes.append(field_def.get('ord', 0))
             
             # Извлекаем текст из нужных полей
             extracted_texts = []
             for idx in field_indexes:
                 if idx < len(note_info['fields']):
-                    extracted_texts.append(note_info['fields'][idx])
+                    text = note_info['fields'][idx]
+                    if text and text.strip():  # Проверяем, что поле не пустое
+                        extracted_texts.append(text)
             
             notes_data.append({
                 'note_id': note_id,

@@ -26,13 +26,7 @@ def main():
     text_processor = SpanishTextProcessor()
     word_analyzer = WordAnalyzer()
     
-    # Загружаем известные слова и кэш переводов
     print("Загружаем данные...")
-    if os.path.exists("known_words.txt"):
-        word_analyzer.load_known_words("known_words.txt")
-    
-    if os.path.exists("translation_cache.json"):
-        word_analyzer.load_translation_cache("translation_cache.json")
     
     # Демонстрируем обработку текста
     print("\n--- Демонстрация обработки текста ---")
@@ -83,6 +77,13 @@ def main():
                     print(f"\nИспанские колоды: {len(spanish_decks)}")
                     for deck in spanish_decks[:5]:  # Показываем первые 5
                         print(f"  - {deck}")
+                    
+                    # Загружаем известные слова из Anki
+                    print("\nЗагружаем известные слова из Anki...")
+                    if word_analyzer.load_known_words_from_anki(anki):
+                        print("✅ Известные слова успешно загружены из Anki")
+                    else:
+                        print("⚠️ Не удалось загрузить известные слова из Anki")
                 else:
                     print("Испанские колоды не найдены")
             else:
