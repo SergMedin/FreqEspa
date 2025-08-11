@@ -1,0 +1,64 @@
+# Конфигурация Spanish Analyser
+# Все настройки проекта (кроме паролей и API ключей)
+
+# Настройки Anki
+anki:
+  # Путь к файлу коллекции Anki
+  collection_path: "~/Library/Application Support/Anki2/User 1/collection.anki2"
+  # Паттерн для поиска испанских колод
+  deck_pattern: "Spanish*"
+  # Названия полей для извлечения слов
+  field_names:
+    - "FrontText"
+    - "BackText"
+
+# Настройки анализа текста
+text_analysis:
+  # Минимальная длина слова для анализа
+  min_word_length: 3
+  # Максимальное количество слов для экспорта
+  max_words_export: 1000
+  # Включить определение частей речи
+  enable_pos_tagging: true
+  # Модель spaCy для испанского языка
+  spacy_model: "es_core_news_md"
+
+# Настройки веб-скрапера
+web_scraper:
+  # Базовый URL для practicatest.com
+  base_url: "https://practicatest.com"
+  # Таймаут для HTTP запросов (в секундах)
+  timeout: 30
+  # User-Agent для веб-запросов
+  user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+
+# Настройки файлов
+files:
+  # Папка для загруженных HTML файлов
+  downloads_folder: "data/downloads"
+  # Папка для результатов анализа
+  results_folder: "data/results"
+  # Максимальное количество файлов результатов
+  max_results_files: 20
+  # Префикс для файлов результатов
+  results_filename_prefix: "driving_tests_analysis"
+
+# Настройки Excel экспорта
+excel:
+  # Формат относительной частоты (количество знаков после запятой)
+  frequency_decimal_places: 2
+  # Включить заголовки колонок
+  include_headers: true
+  # Название основного листа
+  main_sheet_name: "Word Analysis"
+
+# Настройки логирования
+logging:
+  # Уровень логирования
+  level: "INFO"
+  # Формат логов
+  format: "%(asctime)s - %(levelname)s - %(message)s"
+  # Включить логирование в файл
+  log_to_file: false
+  # Путь к файлу логов
+  log_file: "logs/spanish_analyser.log"

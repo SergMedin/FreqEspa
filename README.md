@@ -5,9 +5,12 @@
 ## Возможности
 
 - **Обработка текста**: Очистка HTML тегов, удаление испанских артиклей, определение доминирующего языка
-- **Анализ слов**: Подсчёт частоты, категоризация по частоте, выявление новых слов
+- **Анализ слов**: Подсчёт частоты, категоризация по частоте, выявление новых слов, определение частей речи с помощью spaCy
 - **Интеграция с Anki**: Работа с коллекциями, поиск заметок, извлечение текста из карточек
-- **Экспорт данных**: Сохранение результатов в Excel с категоризацией
+- **Экспорт данных**: Сохранение результатов в Excel с категоризацией и частями речи
+- **Веб-скрапинг**: Автоматическая загрузка тестов с practicatest.com
+- **Управление файлами**: Автоматическая очистка старых результатов, ограничение по количеству файлов
+- **Умное извлечение текста**: Поиск релевантных блоков HTML (col-md-8) для лучшего качества анализа
 
 ## Структура проекта
 
@@ -18,15 +21,19 @@ spanish_analyser/
 │   │   ├── __init__.py
 │   │   ├── text_processor.py      # Обработка испанского текста
 │   │   ├── anki_integration.py    # Интеграция с Anki
-│   │   └── word_analyzer.py       # Анализ слов
+│   │   └── word_analyzer.py       # Анализ слов с частями речи
 │   └── main.py                    # Основной скрипт
 ├── tools/                         # Основные инструменты
 │   ├── web_scraper/               # Инструмент 1: Универсальный веб-скрапинг
 │   │   ├── html_downloader.py           # Базовый загрузчик HTML
 │   │   ├── scraping_manager.py          # Менеджер скрапинга
-│   │   └── driving_tests_downloader.py # Специализация для билетов
+│   │   ├── driving_tests_downloader.py # Специализация для билетов
+│   │   ├── practicatest_auth.py        # Модуль авторизации
+│   │   ├── practicatest_parser.py      # Парсер страниц
+│   │   ├── test_downloader.py          # Загрузчик тестов по датам
+│   │   └── download_tests.py           # Основной скрипт загрузки
 │   ├── text_analyzer/             # Инструмент 2: Текстовый анализатор
-│   │   └── driving_tests_analyzer.py
+│   │   └── driving_tests_analyzer.py   # Анализатор билетов с частями речи
 │   ├── main_tools.py              # Главный скрипт управления
 │   └── README.md                  # Документация инструментов
 ├── data/                          # Данные проекта
@@ -41,125 +48,132 @@ spanish_analyser/
 ## Требования
 
 - Python 3.8 или выше
-- Git (для подмодуля Anki)
+- Anki (для интеграции с коллекциями)
 
 ## Установка
 
-1. **Клонирование репозитория:**
+1. **Клонируйте репозиторий:**
+```bash
+git clone https://github.com/your-username/spanish_analyser.git
+cd spanish_analyser
+```
 
-   ```bash
-   git clone --recurse-submodules <URL_вашего_репозитория>
-   cd spanish_analyser
-   ```
+2. **Создайте виртуальное окружение:**
+```bash
+python -m venv venv
+source venv/bin/activate  # На macOS/Linux
+# или
+venv\Scripts\activate     # На Windows
+```
 
-2. **Создание виртуального окружения:**
+3. **Установите зависимости:**
+```bash
+pip install -r requirements.txt
+```
 
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate  # для Linux/MacOS
-   # source venv/Scripts/activate  # для Windows
-   ```
+4. **Настройте конфигурацию:**
+   - Скопируйте `.env_example` в `.env` и заполните своими данными
+   - При необходимости отредактируйте `config.yaml` для изменения настроек проекта
 
-3. **Установка зависимостей:**
+5. **Установите модель spaCy для испанского языка:**
+```bash
+python -m spacy download es_core_news_md
+```
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+## Конфигурация
 
-4. **Установка модуля в режиме разработки:**
+Проект использует два конфигурационных файла:
 
-   ```bash
-   pip install -e .
-   ```
+### `config.yaml` - Основные настройки проекта
+Содержит все настройки проекта (кроме паролей и API ключей):
+- **anki** - настройки интеграции с Anki (путь к коллекции, паттерн колод, поля)
+- **text_analysis** - настройки анализа текста (модель spaCy, минимальная длина слов)
+- **web_scraper** - настройки веб-скрапера (URL, таймауты, User-Agent)
+- **files** - настройки файлов (папки загрузок, результатов, префиксы)
+- **excel** - настройки Excel экспорта (формат частоты, названия листов)
+- **logging** - настройки логирования (уровень, формат, файлы)
+
+### `.env` - Секретные данные
+Содержит только пароли, API ключи и другие секретные данные:
+- `PRACTICATEST_EMAIL` - email для входа на practicatest.com
+- `PRACTICATEST_PASSWORD` - пароль для входа на practicatest.com
+- `OPENAI_API_KEY` - API ключ OpenAI (если используется)
+
+**Важно:** Файл `.env` НЕ должен попадать в git репозиторий!
 
 ## Использование
 
+### Основные инструменты
+
+Проект предоставляет единый интерфейс для всех инструментов:
+
+```bash
+# Запуск веб-скрапера для загрузки тестов
+python tools/main_tools.py --scraper
+
+# Запуск текстового анализатора
+python tools/main_tools.py --analyzer
+
+# Запуск всех инструментов
+python tools/main_tools.py --all
+
+# Интерактивный режим
+python tools/main_tools.py
+```
+
+### Веб-скрапер (Инструмент 1)
+
+Автоматическая загрузка тестов с practicatest.com:
+
+```bash
+cd tools/web_scraper
+python download_tests.py
+```
+
+**Возможности:**
+- Авторизация на practicatest.com
+- Анализ таблицы доступных тестов
+- Автоматическая загрузка новых тестов
+- Проверка уже загруженных тестов
+- Очистка HTML от изображений
+
+### Текстовый анализатор (Инструмент 2)
+
+Анализ загруженных HTML файлов и создание Excel отчётов:
+
+```bash
+cd tools/text_analyzer
+python driving_tests_analyzer.py
+```
+
+**Возможности:**
+- **Умное извлечение текста** из HTML файлов с поиском блоков `col-md-8`
+- **Нормализация испанских слов** с помощью spaCy
+- **Точное определение частей речи** с использованием модели `es_core_news_md`
+- **Лемматизация слов** для лучшего качества анализа
+- **Проверка слов против колоды Spanish в Anki**
+- **Создание Excel отчётов** с временными метками
+- **Автоматическая очистка старых файлов** (максимум 20)
+
+**Технологии:**
+- **spaCy** - профессиональная библиотека для NLP
+- **Испанская модель** `es_core_news_md` для точного анализа
+- **Fallback механизм** - базовое определение частей речи если spaCy недоступен
+
+**Формат названий файлов результатов:**
+```
+driving_tests_analysis_YYYYMMDD_HHMMSS.xlsx
+```
+
+**Структура Excel файла:**
+
+Excel файл содержит один лист "Word Analysis" с колонками:
+- **Word** - слово на испанском языке
+- **Part of Speech** - часть речи на русском языке (определяется spaCy)
+- **Frequency** - относительная частота в процентах от общего количества слов
+- **Count** - абсолютное количество вхождений слова
+
 ### Базовый анализ текста
 
-```python
-from spanish_analyser import SpanishTextProcessor
-
-processor = SpanishTextProcessor()
-cleaned_text = processor.clean_text("<p>Los colores del semáforo</p>")
-print(cleaned_text)  # "colores del semáforo"
 ```
-
-### Анализ слов
-
-```python
-from spanish_analyser import WordAnalyzer
-
-analyzer = WordAnalyzer()
-analyzer.add_words_from_text("hola mundo, ¿cómo estás?")
-stats = analyzer.get_summary_stats()
-print(f"Всего слов: {stats['всего_уникальных_слов']}")
-
-# Загрузка известных слов из Anki
-from spanish_analyser import AnkiIntegration
-with AnkiIntegration() as anki:
-    if anki.is_connected():
-        analyzer.load_known_words_from_anki(anki)
 ```
-
-### Интеграция с Anki
-
-```python
-from spanish_analyser import AnkiIntegration
-
-with AnkiIntegration() as anki:
-    if anki.is_connected():
-        stats = anki.get_collection_stats()
-        print(f"Заметок: {stats['total_notes']}")
-```
-
-### Запуск основного скрипта
-
-```bash
-python src/main.py
-```
-
-### Использование инструментов
-
-```bash
-# Показать статус инструментов
-python tools/main_tools.py status
-
-# Загрузить билеты (страницы 1-10)
-python tools/main_tools.py download --start 1 --end 10
-
-# Анализировать загруженные билеты
-python tools/main_tools.py analyze
-
-# Полный цикл: загрузка + анализ
-python tools/main_tools.py full --start 1 --end 5
-```
-
-## Тестирование
-
-Запуск тестов:
-
-```bash
-python -m pytest tests/
-```
-
-Запуск конкретного теста:
-
-```bash
-python -m pytest tests/test_text_processor.py -v
-```
-
-## Разработка
-
-Для разработки установите дополнительные зависимости:
-
-```bash
-pip install -e ".[dev]"
-```
-
-## Лицензия
-
-MIT License
-
-## Автор
-
-Sergey

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
+from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +111,7 @@ class PracticaTestAuth:
         try:
             logger.info("Начинаю процесс авторизации на practicatest.com")
             
-            # Сначала получаем главную страницу для получения cookies
+            # 1. Получаем главную страницу для получения cookies
             logger.info("Получаю главную страницу...")
             response = self.session.get(self.base_url, timeout=30)
             response.raise_for_status()
@@ -118,38 +119,55 @@ class PracticaTestAuth:
             # Небольшая задержка
             time.sleep(self.config.get('LOGIN_DELAY', 2))
             
-            # Получаем страницу входа для анализа формы
-            logger.info("Получаю страницу входа...")
-            response = self.session.get(self.login_url, timeout=30)
-            response.raise_for_status()
+            # 2. Отправляем AJAX запрос на /ajax/login (как это делает JavaScript на сайте)
+            logger.info("Отправляю AJAX запрос для авторизации...")
             
-            # Анализируем форму входа (базовая реализация)
-            # В реальности может потребоваться более сложный анализ
+            # Данные для входа (точно как в форме на сайте)
             login_data = {
-                'email': self.config['PRACTICATEST_EMAIL'],
-                'password': self.config['PRACTICATEST_PASSWORD'],
-                'remember': '1'  # Запомнить пользователя
+                'login-email': self.config['PRACTICATEST_EMAIL'],
+                'login-password': self.config['PRACTICATEST_PASSWORD'],
+                'login-redirect': ''  # Скрытое поле
             }
             
-            # Выполняем POST запрос для входа
-            logger.info("Отправляю данные для входа...")
+            # Отправляем POST запрос на AJAX endpoint
+            login_url = f"{self.base_url}/ajax/login"
             response = self.session.post(
-                self.login_url,
+                login_url,
                 data=login_data,
                 timeout=30,
-                allow_redirects=True
+                headers={
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Referer': self.base_url
+                }
             )
             response.raise_for_status()
             
-            # Проверяем успешность входа
-            if self._check_login_success(response):
-                self.is_authenticated = True
-                self.login_time = datetime.now()
-                logger.info("✅ Авторизация на practicatest.com успешна!")
-                return True
-            else:
-                logger.error("❌ Авторизация не удалась")
-                return False
+            # 3. Проверяем ответ от AJAX
+            try:
+                login_result = response.json()
+                logger.info(f"Ответ от сервера авторизации: {login_result}")
+                
+                if login_result.get('success'):
+                    logger.info("✅ AJAX авторизация прошла успешно")
+                    self.is_authenticated = True
+                    self.login_time = datetime.now()
+                    return True
+                else:
+                    logger.error(f"❌ AJAX авторизация не удалась: {login_result.get('alert', 'Неизвестная ошибка')}")
+                    return False
+                    
+            except ValueError:
+                # Если ответ не JSON, проверяем по содержимому
+                logger.warning("Ответ не в формате JSON, проверяю по содержимому...")
+                if self._check_login_success():
+                    self.is_authenticated = True
+                    self.login_time = datetime.now()
+                    logger.info("✅ Авторизация на practicatest.com успешна!")
+                    return True
+                else:
+                    logger.error("❌ Авторизация не удалась")
+                    return False
                 
         except requests.exceptions.RequestException as e:
             logger.error(f"Ошибка сети при авторизации: {e}")
@@ -158,53 +176,69 @@ class PracticaTestAuth:
             logger.error(f"Неожиданная ошибка при авторизации: {e}")
             return False
     
-    def _check_login_success(self, response: requests.Response) -> bool:
+    def _check_login_success(self) -> bool:
         """
         Проверяет успешность входа
         
-        Args:
-            response: Ответ сервера после попытки входа
-            
         Returns:
             True если вход успешен
         """
-        # Проверяем по URL (если произошёл редирект на главную)
-        if 'practicatest.com' in response.url and '/login' not in response.url:
-            return True
-        
-        # Проверяем по содержимому страницы
-        content = response.text.lower()
-        
-        # Ищем признаки успешного входа
-        success_indicators = [
-            'mi cuenta',  # Моя учётная запись
-            'cerrar sesión',  # Выйти
-            'logout',
-            'welcome',
-            'bienvenido'
-        ]
-        
-        # Ищем признаки неудачного входа
-        failure_indicators = [
-            'error de autenticación',
-            'credenciales incorrectas',
-            'invalid credentials',
-            'login failed'
-        ]
-        
-        # Проверяем успешные индикаторы
-        for indicator in success_indicators:
-            if indicator in content:
+        try:
+            # Получаем главную страницу после попытки входа
+            response = self.session.get(self.base_url, timeout=30)
+            response.raise_for_status()
+            
+            # Анализируем содержимое страницы
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # 1. Проверяем, что кнопка LOGIN исчезла (признак успешной авторизации)
+            login_button = soup.find('a', string=lambda text: text and 'LOGIN' in text.upper())
+            if not login_button:
+                login_button = soup.find('button', string=lambda text: text and 'LOGIN' in text.upper())
+            
+            if not login_button:
+                logger.info("✅ Кнопка LOGIN не найдена - авторизация прошла успешно")
                 return True
-        
-        # Проверяем неудачные индикаторы
-        for indicator in failure_indicators:
-            if indicator in content:
-                return False
-        
-        # Если не можем определить, считаем неудачным
-        logger.warning("Не удалось определить статус авторизации")
-        return False
+            
+            # 2. Проверяем по содержимому страницы
+            content = response.text.lower()
+            
+            # Ищем признаки успешного входа
+            success_indicators = [
+                'mi cuenta',  # Моя учётная запись
+                'cerrar sesión',  # Выйти
+                'logout',
+                'welcome',
+                'bienvenido'
+            ]
+            
+            # Ищем признаки неудачного входа
+            failure_indicators = [
+                'error de autenticación',
+                'credenciales incorrectas',
+                'invalid credentials',
+                'login failed'
+            ]
+            
+            # Проверяем успешные индикаторы
+            for indicator in success_indicators:
+                if indicator in content:
+                    logger.info(f"✅ Найден индикатор успешной авторизации: {indicator}")
+                    return True
+            
+            # Проверяем неудачные индикаторы
+            for indicator in failure_indicators:
+                if indicator in content:
+                    logger.error(f"❌ Найден индикатор неудачной авторизации: {indicator}")
+                    return False
+            
+            # Если кнопка LOGIN найдена, но нет явных индикаторов
+            logger.warning("⚠️ Кнопка LOGIN найдена - возможно, авторизация не прошла")
+            return False
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка при проверке авторизации: {e}")
+            return False
     
     def is_session_valid(self) -> bool:
         """

@@ -2,57 +2,44 @@
 """
 Анализатор билетов по вождению
 
-Специализированный инструмент для анализа HTML страниц с билетами
-по вождению и формирования Excel отчётов с датой/временем
+Анализирует HTML файлы с билетами и создаёт Excel отчёты
 """
 
 import os
 import sys
+import logging
 from pathlib import Path
 from datetime import datetime
-import glob
-import logging
-import pandas as pd
-from collections import Counter
+import time
 
-# Добавляем путь к модулям
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+# Добавляем путь к модулям проекта
+sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 
-from spanish_analyser import SpanishTextProcessor, WordAnalyzer
-
-# Настройка логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+from src.spanish_analyser.word_analyzer import WordAnalyzer
+from src.spanish_analyser.anki_integration import AnkiIntegration
+from src.spanish_analyser.config import config
 
 
 class DrivingTestsAnalyzer:
-    """Специализированный анализатор для билетов по вождению"""
+    """Анализатор билетов по вождению"""
     
-    def __init__(self, 
-                 downloads_path: str = "../data/downloads",
-                 results_path: str = "../data/results",
-                 max_files: int = 20):
-        """
-        Инициализация анализатора
+    def __init__(self):
+        """Инициализация анализатора"""
+        self.word_analyzer = WordAnalyzer()
+        self.anki_integration = AnkiIntegration()
         
-        Args:
-            downloads_path: Путь к папке с загруженными HTML файлами
-            results_path: Путь для сохранения результатов анализа
-            max_files: Максимальное количество файлов результатов
-        """
-        self.downloads_path = Path(downloads_path)
-        self.results_path = Path(results_path)
-        self.max_files = max_files
+        # Получаем настройки из конфигурации
+        self.downloads_path = Path(config.get_downloads_folder())
+        self.results_path = Path(config.get_results_folder())
+        self.max_results_files = config.get_max_results_files()
+        self.results_filename_prefix = config.get_results_filename_prefix()
         
         # Создаём папку для результатов
         self.results_path.mkdir(parents=True, exist_ok=True)
         
         # Инициализируем компоненты
+        from src.spanish_analyser.text_processor import SpanishTextProcessor
         self.text_processor = SpanishTextProcessor()
-        self.word_analyzer = WordAnalyzer()
         
         # Статистика анализа
         self.analysis_stats = {
@@ -61,9 +48,48 @@ class DrivingTestsAnalyzer:
             'start_time': datetime.now()
         }
         
-        logger.info(f"Анализатор инициализирован")
-        logger.info(f"Папка загрузок: {self.downloads_path}")
-        logger.info(f"Папка результатов: {self.results_path}")
+        # Настройка логирования
+        logging.basicConfig(
+            level=getattr(logging, config.get_logging_level()),
+            format=config.get_logging_format()
+        )
+        self.logger = logging.getLogger(__name__)
+        
+        self.logger.info("Анализатор инициализирован")
+        self.logger.info(f"Папка загрузок: {self.downloads_path}")
+        self.logger.info(f"Папка результатов: {self.results_path}")
+    
+    def connect_to_anki(self) -> bool:
+        """
+        Подключается к Anki и загружает известные слова
+        
+        Returns:
+            True если подключение успешно
+        """
+        try:
+            self.logger.info("Подключаюсь к Anki...")
+            if self.anki_integration.connect():
+                self.logger.info("✅ Подключение к Anki успешно")
+                
+                # Загружаем известные слова из испанских колод
+                self.logger.info("Загружаю известные слова из колод Spanish...")
+                if self.word_analyzer.load_known_words_from_anki(
+                    self.anki_integration, 
+                    deck_pattern="Spanish*",
+                    field_names=['FrontText', 'BackText']
+                ):
+                    self.logger.info("✅ Известные слова загружены из Anki")
+                    return True
+                else:
+                    self.logger.warning("⚠️ Не удалось загрузить известные слова из Anki")
+                    return False
+            else:
+                self.logger.warning("⚠️ Не удалось подключиться к Anki")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"❌ Ошибка при подключении к Anki: {e}")
+            return False
     
     def find_html_files(self, pattern: str = "*.html") -> list:
         """
@@ -76,7 +102,7 @@ class DrivingTestsAnalyzer:
             Список путей к HTML файлам
         """
         html_files = list(self.downloads_path.glob(pattern))
-        logger.info(f"Найдено {len(html_files)} HTML файлов для анализа")
+        self.logger.info(f"Найдено {len(html_files)} HTML файлов для анализа")
         return html_files
     
     def extract_text_from_html(self, html_file: Path) -> str:
@@ -93,15 +119,57 @@ class DrivingTestsAnalyzer:
             with open(html_file, 'r', encoding='utf-8') as f:
                 html_content = f.read()
             
-            # Очищаем HTML теги
-            cleaned_text = self.text_processor.clean_text(html_content, remove_prefixes=False)
+            # Используем улучшенный метод извлечения текста
+            cleaned_text = self._extract_text_improved(html_content)
             
-            logger.debug(f"Извлечён текст из {html_file.name}: {len(cleaned_text)} символов")
-            return cleaned_text
+            # Дополнительно извлекаем испанские слова для лучшего качества
+            spanish_words = self.text_processor.extract_spanish_words(cleaned_text)
+            
+            # Объединяем в текст для анализа
+            final_text = ' '.join(spanish_words)
+            
+            self.logger.debug(f"Извлечён текст из {html_file.name}: {len(final_text)} символов, {len(spanish_words)} слов")
+            return final_text
             
         except Exception as e:
-            logger.error(f"Ошибка при извлечении текста из {html_file.name}: {e}")
+            self.logger.error(f"Ошибка при извлечении текста из {html_file.name}: {e}")
             return ""
+    
+    def _extract_text_improved(self, html_content: str) -> str:
+        """
+        Улучшенное извлечение текста из HTML с поиском блоков col-md-8
+        
+        Args:
+            html_content: HTML содержимое
+            
+        Returns:
+            Извлечённый текст
+        """
+        try:
+            from bs4 import BeautifulSoup
+            
+            # Создаём объект BeautifulSoup
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # Извлекаем все блоки с классом "col-md-8" (как в оригинальном коде)
+            blocks = soup.find_all('div', class_='col-md-8')
+            
+            if blocks:
+                # Извлекаем текст из каждого блока и объединяем их
+                text = "\n".join([block.get_text(separator=" ", strip=True) for block in blocks])
+                self.logger.debug(f"Найдено {len(blocks)} блоков col-md-8")
+            else:
+                # Fallback: ищем другие элементы с текстом
+                text_elements = soup.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'div'])
+                text = "\n".join([elem.get_text(strip=True) for elem in text_elements if elem.get_text(strip=True)])
+                self.logger.debug(f"Fallback: найдено {len(text_elements)} текстовых элементов")
+            
+            return text.strip()
+            
+        except Exception as e:
+            self.logger.warning(f"Ошибка при улучшенном извлечении текста: {e}")
+            # Fallback к базовому методу
+            return self.text_processor.clean_text(html_content, remove_prefixes=False)
     
     def analyze_html_files(self, html_files: list = None) -> dict:
         """
@@ -116,7 +184,7 @@ class DrivingTestsAnalyzer:
         if html_files is None:
             html_files = self.find_html_files()
         
-        logger.info(f"Начинаю анализ {len(html_files)} HTML файлов")
+        self.logger.info(f"Начинаю анализ {len(html_files)} HTML файлов")
         
         total_words = 0
         
@@ -129,21 +197,21 @@ class DrivingTestsAnalyzer:
                     self.word_analyzer.add_words_from_text(text)
                     
                     # Подсчитываем слова в этом файле
-                    words_in_file = len(self.text_processor.extract_spanish_words(text))
+                    words_in_file = len(text.split())
                     total_words += words_in_file
                     
                     self.analysis_stats['files_processed'] += 1
-                    logger.info(f"✅ Обработан {html_file.name}: найдено {words_in_file} слов")
+                    self.logger.info(f"✅ Обработан {html_file.name}: найдено {words_in_file} слов")
                 else:
-                    logger.warning(f"⚠️ Пропущен {html_file.name}: пустой текст")
+                    self.logger.warning(f"⚠️ Пропущен {html_file.name}: пустой текст")
                     
             except Exception as e:
-                logger.error(f"❌ Ошибка при анализе {html_file.name}: {e}")
+                self.logger.error(f"❌ Ошибка при анализе {html_file.name}: {e}")
         
         self.analysis_stats['words_found'] = total_words
         
-        logger.info(f"Анализ завершён. Обработано файлов: {self.analysis_stats['files_processed']}")
-        logger.info(f"Всего найдено слов: {total_words}")
+        self.logger.info(f"Анализ завершён. Обработано файлов: {self.analysis_stats['files_processed']}")
+        self.logger.info(f"Всего найдено слов: {total_words}")
         
         return {
             'files_processed': self.analysis_stats['files_processed'],
@@ -151,7 +219,7 @@ class DrivingTestsAnalyzer:
             'unique_words': len(self.word_analyzer.word_frequencies)
         }
     
-    def generate_filename_with_timestamp(self, prefix: str = "word_analysis") -> str:
+    def generate_filename_with_timestamp(self, prefix: str = "driving_tests_analysis") -> str:
         """
         Генерирует имя файла с временной меткой
         
@@ -170,21 +238,21 @@ class DrivingTestsAnalyzer:
             # Находим все Excel файлы в папке результатов
             excel_files = list(self.results_path.glob("*.xlsx"))
             
-            if len(excel_files) > self.max_files:
+            if len(excel_files) > self.max_results_files:
                 # Сортируем по времени изменения (старые первыми)
                 excel_files.sort(key=lambda x: x.stat().st_mtime)
                 
                 # Удаляем самые старые файлы
-                files_to_delete = excel_files[:-self.max_files]
+                files_to_delete = excel_files[:-self.max_results_files]
                 
                 for old_file in files_to_delete:
                     old_file.unlink()
-                    logger.info(f"Удалён старый файл: {old_file.name}")
+                    self.logger.info(f"Удалён старый файл: {old_file.name}")
                 
-                logger.info(f"Удалено {len(files_to_delete)} старых файлов результатов")
+                self.logger.info(f"Удалено {len(files_to_delete)} старых файлов результатов")
             
         except Exception as e:
-            logger.error(f"Ошибка при очистке старых файлов: {e}")
+            self.logger.error(f"Ошибка при очистке старых файлов: {e}")
     
     def export_results(self, include_categories: bool = True) -> str:
         """
@@ -207,11 +275,11 @@ class DrivingTestsAnalyzer:
             # Очищаем старые файлы
             self.cleanup_old_files()
             
-            logger.info(f"Результаты экспортированы в: {filename}")
+            self.logger.info(f"Результаты экспортированы в: {filename}")
             return str(file_path)
             
         except Exception as e:
-            logger.error(f"Ошибка при экспорте результатов: {e}")
+            self.logger.error(f"Ошибка при экспорте результатов: {e}")
             return ""
     
     def get_analysis_summary(self) -> dict:
@@ -239,7 +307,13 @@ class DrivingTestsAnalyzer:
             'words_found': 0,
             'start_time': datetime.now()
         }
-        logger.info("Результаты анализа сброшены")
+        self.logger.info("Результаты анализа сброшены")
+    
+    def close(self):
+        """Закрывает соединения"""
+        if self.anki_integration:
+            self.anki_integration.disconnect()
+            self.logger.info("Соединение с Anki закрыто")
 
 
 def main():
@@ -247,14 +321,16 @@ def main():
     print("📊 Анализатор билетов по вождению\n")
     
     # Создаём анализатор
-    analyzer = DrivingTestsAnalyzer(
-        downloads_path="../../data/downloads",
-        results_path="../../data/results"
-    )
+    analyzer = DrivingTestsAnalyzer()
     
     try:
+        # Подключаемся к Anki
+        print("🔗 Подключение к Anki...")
+        if not analyzer.connect_to_anki():
+            print("⚠️ Продолжаю без Anki...")
+        
         # Анализируем HTML файлы
-        print("Начинаю анализ HTML файлов...")
+        print("\n📄 Начинаю анализ HTML файлов...")
         analysis_result = analyzer.analyze_html_files()
         
         print(f"\n📊 Результаты анализа:")
@@ -279,6 +355,8 @@ def main():
     except Exception as e:
         print(f"\n❌ Произошла ошибка: {e}")
         return 1
+    finally:
+        analyzer.close()
     
     return 0
 

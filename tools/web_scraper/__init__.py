@@ -13,11 +13,15 @@ from .html_downloader import HTMLDownloader
 from .scraping_manager import ScrapingManager
 from .driving_tests_downloader import DrivingTestsDownloader, DrivingTestsScrapingManager
 from .practicatest_auth import PracticaTestAuth
+from .practicatest_parser import PracticaTestParser
+from .test_downloader import TestDownloader
 
 __all__ = [
     "HTMLDownloader",
     "ScrapingManager",
     "DrivingTestsDownloader",
     "DrivingTestsScrapingManager",
-    "PracticaTestAuth"
+    "PracticaTestAuth",
+    "PracticaTestParser",
+    "TestDownloader"
 ]

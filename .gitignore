@@ -38,6 +38,9 @@ word_analysis_results.xlsx
 data/downloads/
 data/results/
 
+# Игнорировать временные файлы и папки
+tmp/
+temp/
 
 
 # Игнорировать устаревшие файлы
