@@ -1,3 +1,2 @@
-[submodule "anki"]
-	path = anki
-	url = https://github.com/ankitects/anki.git
+# Файл .gitmodules удалён, так как подмодуль Anki больше не используется
+# Вместо этого Anki будет установлен как обычная зависимость через pip
